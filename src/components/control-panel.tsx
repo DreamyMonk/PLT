@@ -1,7 +1,7 @@
 "use client";
 
 import type { FC } from 'react';
-import { UploadCloud, Image as ImageIcon, SlidersHorizontal, Wand2, RotateCcw, Share2, FileText } from 'lucide-react';
+import { UploadCloud, Image as ImageIcon, SlidersHorizontal, Wand2, RotateCcw, Share2, FileText, ZoomIn, ZoomOut } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Label } from './ui/label';
@@ -15,11 +15,18 @@ type OverlayState = {
   opacity: number;
 };
 
+type ViewState = {
+  zoom: number;
+  pan: { x: number; y: number };
+};
+
 interface ControlPanelProps {
   pltFile: File | null;
   overlayImage: string | null;
   overlayState: OverlayState;
-  onStateChange: (newState: Partial<OverlayState>) => void;
+  viewState: ViewState;
+  onOverlayStateChange: (newState: Partial<OverlayState>) => void;
+  onViewStateChange: (newState: Partial<ViewState>) => void;
   onPltUpload: (file: File) => void;
   onImageUpload: (file: File) => void;
   onReset: () => void;
@@ -41,7 +48,9 @@ export const ControlPanel: FC<ControlPanelProps> = ({
   pltFile,
   overlayImage,
   overlayState,
-  onStateChange,
+  viewState,
+  onOverlayStateChange,
+  onViewStateChange,
   onPltUpload,
   onImageUpload,
   onReset,
@@ -52,9 +61,14 @@ export const ControlPanel: FC<ControlPanelProps> = ({
   const handlePositionChange = (axis: 'x' | 'y', value: string) => {
     const numValue = parseFloat(value);
     if (!isNaN(numValue)) {
-      onStateChange({ position: { ...overlayState.position, [axis]: numValue } });
+      onOverlayStateChange({ position: { ...overlayState.position, [axis]: numValue } });
     }
   };
+
+  const handleZoom = (direction: 'in' | 'out') => {
+    const zoomFactor = direction === 'in' ? 1.1 : 0.9;
+    onViewStateChange({ zoom: viewState.zoom * zoomFactor });
+  }
 
   return (
     <div className="flex flex-col gap-4 h-full overflow-y-auto pr-2">
@@ -88,11 +102,37 @@ export const ControlPanel: FC<ControlPanelProps> = ({
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+              <ZoomIn className="h-5 w-5" />
+              View Controls
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid gap-2">
+              <Label htmlFor="zoom-slider">Zoom ({Math.round(viewState.zoom * 100)}%)</Label>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="icon" onClick={() => handleZoom('out')}><ZoomOut /></Button>
+                <Slider
+                  id="zoom-slider"
+                  min={0.1}
+                  max={5}
+                  step={0.01}
+                  value={[viewState.zoom]}
+                  onValueChange={([val]) => onViewStateChange({ zoom: val })}
+                />
+                <Button variant="outline" size="icon" onClick={() => handleZoom('in')}><ZoomIn /></Button>
+              </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card className={!overlayImage ? 'opacity-50 pointer-events-none' : ''}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
             <SlidersHorizontal className="h-5 w-5" />
-            Adjustments
+            Overlay Adjustments
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -121,7 +161,7 @@ export const ControlPanel: FC<ControlPanelProps> = ({
               max={200}
               step={1}
               value={[overlayState.size]}
-              onValueChange={([val]) => onStateChange({ size: val })}
+              onValueChange={([val]) => onOverlayStateChange({ size: val })}
             />
           </div>
           <div className="grid gap-2">
@@ -132,7 +172,7 @@ export const ControlPanel: FC<ControlPanelProps> = ({
               max={180}
               step={1}
               value={[overlayState.rotation]}
-              onValueChange={([val]) => onStateChange({ rotation: val })}
+              onValueChange={([val]) => onOverlayStateChange({ rotation: val })}
             />
           </div>
           <div className="grid gap-2">
@@ -143,7 +183,7 @@ export const ControlPanel: FC<ControlPanelProps> = ({
               max={1}
               step={0.01}
               value={[overlayState.opacity]}
-              onValueChange={([val]) => onStateChange({ opacity: val })}
+              onValueChange={([val]) => onOverlayStateChange({ opacity: val })}
             />
           </div>
         </CardContent>
@@ -155,7 +195,7 @@ export const ControlPanel: FC<ControlPanelProps> = ({
               <Wand2 />
               Suggest
             </Button>
-            <Button variant="secondary" onClick={onReset} disabled={!overlayImage}>
+            <Button variant="secondary" onClick={onReset}>
               <RotateCcw />
               Reset
             </Button>

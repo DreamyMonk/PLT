@@ -14,11 +14,21 @@ type OverlayState = {
   opacity: number;
 };
 
-const INITIAL_STATE: OverlayState = {
+type ViewState = {
+  zoom: number;
+  pan: { x: number; y: number };
+};
+
+const INITIAL_OVERLAY_STATE: OverlayState = {
   position: { x: 50, y: 50 },
   size: 100,
   rotation: 0,
   opacity: 1,
+};
+
+const INITIAL_VIEW_STATE: ViewState = {
+  zoom: 1,
+  pan: { x: 0, y: 0 },
 };
 
 function PLTOverlayPage() {
@@ -27,7 +37,8 @@ function PLTOverlayPage() {
 
   const [pltFile, setPltFile] = useState<File | null>(null);
   const [overlayImage, setOverlayImage] = useState<string | null>(null);
-  const [overlayState, setOverlayState] = useState<OverlayState>(INITIAL_STATE);
+  const [overlayState, setOverlayState] = useState<OverlayState>(INITIAL_OVERLAY_STATE);
+  const [viewState, setViewState] = useState<ViewState>(INITIAL_VIEW_STATE);
 
   useEffect(() => {
     const params = new URLSearchParams(searchParams.toString());
@@ -40,12 +51,12 @@ function PLTOverlayPage() {
     if (x || y || size || rotation || opacity) {
       setOverlayState({
         position: {
-          x: x ? parseFloat(x) : INITIAL_STATE.position.x,
-          y: y ? parseFloat(y) : INITIAL_STATE.position.y,
+          x: x ? parseFloat(x) : INITIAL_OVERLAY_STATE.position.x,
+          y: y ? parseFloat(y) : INITIAL_OVERLAY_STATE.position.y,
         },
-        size: size ? parseFloat(size) : INITIAL_STATE.size,
-        rotation: rotation ? parseFloat(rotation) : INITIAL_STATE.rotation,
-        opacity: opacity ? parseFloat(opacity) : INITIAL_STATE.opacity,
+        size: size ? parseFloat(size) : INITIAL_OVERLAY_STATE.size,
+        rotation: rotation ? parseFloat(rotation) : INITIAL_OVERLAY_STATE.rotation,
+        opacity: opacity ? parseFloat(opacity) : INITIAL_OVERLAY_STATE.opacity,
       });
       toast({
         title: "Settings Loaded",
@@ -66,11 +77,16 @@ function PLTOverlayPage() {
     setOverlayState(prev => ({ ...prev, ...newState }));
   };
 
+  const updateViewState = (newState: Partial<ViewState>) => {
+    setViewState(prev => ({ ...prev, ...newState }));
+  };
+
   const handleReset = () => {
-    setOverlayState(INITIAL_STATE);
+    setOverlayState(INITIAL_OVERLAY_STATE);
+    setViewState(INITIAL_VIEW_STATE);
     toast({
       title: "Settings Reset",
-      description: "Overlay adjustments have been reset to their default values.",
+      description: "Overlay and view adjustments have been reset to their default values.",
     });
   };
 
@@ -115,13 +131,17 @@ function PLTOverlayPage() {
           pltFile={pltFile}
           overlayImage={overlayImage}
           overlayState={overlayState}
-          onStateChange={updateOverlayState}
+          viewState={viewState}
+          onOverlayStateChange={updateOverlayState}
+          onViewStateChange={updateViewState}
         />
         <ControlPanel
           pltFile={pltFile}
           overlayImage={overlayImage}
           overlayState={overlayState}
-          onStateChange={updateOverlayState}
+          viewState={viewState}
+          onOverlayStateChange={updateOverlayState}
+          onViewStateChange={updateViewState}
           onPltUpload={handlePltUpload}
           onImageUpload={handleImageUpload}
           onReset={handleReset}
