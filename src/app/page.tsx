@@ -21,7 +21,7 @@ type ViewState = {
 };
 
 const INITIAL_OVERLAY_STATE: OverlayState = {
-  position: { x: 50, y: 50 },
+  position: { x: 0, y: 0 },
   size: 100,
   rotation: 0,
   opacity: 1,
@@ -125,7 +125,7 @@ function PLTOverlayPage() {
         overlayImageDataUri,
       });
 
-      setOverlayState(prev => ({ ...prev, ...suggestion }));
+      setOverlayState(prev => ({ ...prev, ...suggestion, position: { x: suggestion.position.x, y: suggestion.position.y} }));
       toast({
         title: 'Intelligent Adjustment Applied',
         description: 'The overlay has been adjusted based on AI suggestion.',

@@ -54,16 +54,12 @@ export const PltViewer: FC<PltViewerProps> = ({
     }
   }, [pltFile]);
 
-  const pltSvg = useMemo(() => {
-    if (!pltContent) return null;
+  const { pathData, viewBox, imageSize } = useMemo(() => {
+    if (!pltContent) return { pathData: null, viewBox: null, imageSize: null };
     
-    // Very basic PLT parser. Assumes HPGL.
     const commands = pltContent.split(';').filter(c => c.trim().length > 0);
-    const pathData: string[] = [];
-    let currentPos = { x: 0, y: 0 };
+    const d: string[] = [];
     let penDown = false;
-    let scale = { x: 1, y: 1 };
-    let offset = { x: 0, y: 0 };
 
     const coordsToBounds = (coords: {x: number, y: number}[]) => {
       if (coords.length === 0) return { minX: 0, minY: 0, maxX: 1, maxY: 1 };
@@ -80,78 +76,65 @@ export const PltViewer: FC<PltViewerProps> = ({
     const allCoords: {x:number, y:number}[] = [];
     commands.forEach(cmd => {
       const op = cmd.substring(0, 2).toUpperCase();
-      const args = (cmd.substring(2).match(/(-?\d+)/g) || []).map(Number);
+      const args = (cmd.match(/(-?\d+)/g) || []).map(Number);
       if (op === 'PU' || op === 'PD' || op === 'PA') {
          for (let i = 0; i < args.length; i += 2) {
-            allCoords.push({x: args[i], y: args[i+1]});
+            if (args.length > i + 1) allCoords.push({x: args[i], y: args[i+1]});
          }
       }
     });
-
+    
     const bounds = coordsToBounds(allCoords);
     const plotWidth = bounds.maxX - bounds.minX;
     const plotHeight = bounds.maxY - bounds.minY;
 
     if (plotWidth === 0 || plotHeight === 0) {
-        return <PltPlaceholder />;
+        return { pathData: null, viewBox: null, imageSize: null };
     }
     
-    const viewBox = `${bounds.minX} ${bounds.minY} ${plotWidth} ${plotHeight}`;
+    const vb = `${bounds.minX} ${bounds.minY} ${plotWidth} ${plotHeight}`;
 
     for (const cmd of commands) {
       const op = cmd.substring(0, 2).toUpperCase();
-      const args = (cmd.substring(2).match(/(-?\d+)/g) || []).map(Number);
+      const args = (cmd.match(/(-?\d+)/g) || []).map(Number);
 
       switch (op) {
         case 'PU': // Pen Up
           penDown = false;
           if (args.length >= 2) {
-            pathData.push(`M ${args[0]} ${args[1]}`);
-            currentPos = { x: args[0], y: args[1] };
+            d.push(`M ${args[0]} ${args[1]}`);
           }
           break;
         case 'PD': // Pen Down
           penDown = true;
            if (args.length >= 2) {
              for (let i = 0; i < args.length; i+=2) {
-                pathData.push(`L ${args[i]} ${args[i+1]}`);
+                if (args.length > i + 1) d.push(`L ${args[i]} ${args[i+1]}`);
              }
-            currentPos = { x: args[args.length-2], y: args[args.length-1] };
           }
           break;
         case 'PA': // Plot Absolute
             if (args.length >= 2) {
                 for (let i = 0; i < args.length; i+=2) {
-                    const op = penDown ? 'L' : 'M';
-                    pathData.push(`${op} ${args[i]} ${args[i+1]}`);
-                    penDown = true;
+                    if (args.length > i + 1) {
+                        const op = penDown ? 'L' : 'M';
+                        d.push(`${op} ${args[i]} ${args[i+1]}`);
+                        penDown = true;
+                    }
                 }
-                currentPos = { x: args[args.length-2], y: args[args.length-1] };
             }
           break;
         case 'IN': // Initialize
-          pathData.length = 0;
+          d.length = 0;
           break;
       }
     }
     
-    return (
-      <svg
-        width="100%"
-        height="100%"
-        viewBox={viewBox}
-        preserveAspectRatio="xMidYMid meet"
-        className="stroke-current text-foreground"
-        strokeWidth="1"
-        fill="none"
-      >
-        <path d={pathData.join(' ')} />
-      </svg>
-    );
+    return { pathData: d.join(' '), viewBox: vb, imageSize: { width: plotWidth, height: plotHeight } };
   }, [pltContent]);
 
 
-  const handleMouseDown = (e: React.MouseEvent<HTMLImageElement>) => {
+  const handleMouseDown = (e: React.MouseEvent<SVGImageElement>) => {
     if (!viewerRef.current) return;
     setIsDragging(true);
     dragStartPos.current = {
@@ -182,6 +165,8 @@ export const PltViewer: FC<PltViewerProps> = ({
     onViewStateChange({ zoom: Math.max(0.1, Math.min(newZoom, 5)) });
   };
 
+  const clipPathId = "plt-clip-path";
+
   return (
     <Card className="flex-1 w-full h-full overflow-hidden">
       <CardContent
@@ -206,30 +191,49 @@ export const PltViewer: FC<PltViewerProps> = ({
                 <p>Upload a PLT file and an image to begin overlaying.</p>
               </div>
             )}
-            <div className="absolute inset-0 z-10 pointer-events-none">
-              {pltSvg ? pltSvg : <PltPlaceholder />}
+            <div className="absolute inset-0 z-10 flex items-center justify-center">
+              {pathData && viewBox ? (
+                 <svg
+                    width="80%"
+                    height="80%"
+                    viewBox={viewBox}
+                    preserveAspectRatio="xMidYMid meet"
+                    className="stroke-current text-foreground drop-shadow-2xl"
+                    strokeWidth="2"
+                    fill="none"
+                 >
+                    <defs>
+                        <clipPath id={clipPathId}>
+                            <path d={pathData} />
+                        </clipPath>
+                    </defs>
+
+                    {overlayImage && imageSize && (
+                        <image
+                            href={overlayImage}
+                            clipPath={`url(#${clipPathId})`}
+                            x={overlayState.position.x}
+                            y={overlayState.position.y}
+                            width={(imageSize.width * overlayState.size) / 100}
+                            height={(imageSize.height * overlayState.size) / 100}
+                            className={cn(
+                              'cursor-grab',
+                              isDragging && 'cursor-grabbing'
+                            )}
+                            style={{
+                                transform: `rotate(${overlayState.rotation}deg)`,
+                                transformOrigin: 'center center',
+                            }}
+                            onMouseDown={handleMouseDown}
+                            draggable="false"
+                        />
+                    )}
+                    <path d={pathData} strokeOpacity={overlayImage ? 1 : 0.5} />
+                 </svg>
+              ) : (
+                <PltPlaceholder />
+              )}
             </div>
-            {overlayImage && (
-              <img
-                ref={imageRef}
-                src={overlayImage}
-                alt="Overlay"
-                className={cn(
-                  'absolute cursor-grab z-20',
-                  isDragging && 'cursor-grabbing'
-                )}
-                style={{
-                  left: `${overlayState.position.x}px`,
-                  top: `${overlayState.position.y}px`,
-                  width: `${overlayState.size}%`,
-                  opacity: overlayState.opacity,
-                  transform: `rotate(${overlayState.rotation}deg)`,
-                  transformOrigin: 'center center',
-                }}
-                onMouseDown={handleMouseDown}
-                draggable="false"
-              />
-            )}
         </div>
       </CardContent>
     </Card>
