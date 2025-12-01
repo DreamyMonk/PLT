@@ -109,7 +109,14 @@ export const PltViewer: FC<PltViewerProps> = ({
           penDown = true;
            if (args.length >= 2) {
              for (let i = 0; i < args.length; i+=2) {
-                if (args.length > i + 1) d.push(`L ${args[i]} ${args[i+1]}`);
+                if (args.length > i + 1) {
+                  // If first command after Pen Up is Pen Down, treat as Move then Line
+                  if (d.length > 0 && d[d.length - 1].startsWith('M')) {
+                    d.push(`L ${args[i]} ${args[i+1]}`);
+                  } else {
+                    d.push(`L ${args[i]} ${args[i+1]}`);
+                  }
+                }
              }
           }
           break;
@@ -130,11 +137,11 @@ export const PltViewer: FC<PltViewerProps> = ({
       }
     }
     
-    return { pathData: d.join(' '), viewBox: vb, imageSize: { width: plotWidth, height: plotHeight } };
+    return { pathData: d.join(' ') + ' Z', viewBox: vb, imageSize: { width: plotWidth, height: plotHeight } };
   }, [pltContent]);
 
 
-  const handleMouseDown = (e: React.MouseEvent<SVGImageElement>) => {
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!viewerRef.current) return;
     setIsDragging(true);
     dragStartPos.current = {
@@ -143,7 +150,7 @@ export const PltViewer: FC<PltViewerProps> = ({
     };
     e.preventDefault();
   };
-
+  
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isDragging || !viewerRef.current) return;
     const newX = e.clientX / viewState.zoom - dragStartPos.current.x;
@@ -161,26 +168,40 @@ export const PltViewer: FC<PltViewerProps> = ({
 
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
-    const newZoom = viewState.zoom * (1 - e.deltaY * 0.001);
-    onViewStateChange({ zoom: Math.max(0.1, Math.min(newZoom, 5)) });
+    if (isDragging) return;
+
+    if (e.ctrlKey) { // Pan with Ctrl + Wheel
+      onViewStateChange({ pan: {
+        x: viewState.pan.x - e.deltaX,
+        y: viewState.pan.y - e.deltaY,
+      }});
+    } else { // Zoom with Wheel
+      const zoomFactor = 1 - e.deltaY * 0.001;
+      const newZoom = viewState.zoom * zoomFactor;
+      onViewStateChange({ zoom: Math.max(0.1, Math.min(newZoom, 5)) });
+    }
   };
 
-  const clipPathId = "plt-clip-path";
+  const patternId = "overlay-pattern";
 
   return (
     <Card className="flex-1 w-full h-full overflow-hidden">
       <CardContent
         ref={viewerRef}
-        className="relative w-full h-full p-0 overflow-hidden select-none bg-muted/10"
+        className={cn(
+          "relative w-full h-full p-0 overflow-hidden select-none bg-muted/10",
+          isDragging && 'cursor-grabbing'
+        )}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseLeave}
         onWheel={handleWheel}
+        onMouseDown={handleMouseDown}
       >
         <div
             className="absolute inset-0 transition-transform duration-200"
             style={{
-              transform: `scale(${viewState.zoom})`,
+              transform: `scale(${viewState.zoom}) translate(${viewState.pan.x}px, ${viewState.pan.y}px)`,
               transformOrigin: 'center center',
             }}
           >
@@ -192,7 +213,7 @@ export const PltViewer: FC<PltViewerProps> = ({
               </div>
             )}
             <div className="absolute inset-0 z-10 flex items-center justify-center">
-              {pathData && viewBox ? (
+              {pathData && viewBox && imageSize ? (
                  <svg
                     width="80%"
                     height="80%"
@@ -200,35 +221,31 @@ export const PltViewer: FC<PltViewerProps> = ({
                     preserveAspectRatio="xMidYMid meet"
                     className="stroke-current text-foreground drop-shadow-2xl"
                     strokeWidth="2"
-                    fill="none"
                  >
                     <defs>
-                        <clipPath id={clipPathId}>
-                            <path d={pathData} />
-                        </clipPath>
+                      {overlayImage && (
+                        <pattern id={patternId} patternUnits="userSpaceOnUse" width={imageSize.width} height={imageSize.height}>
+                           <image
+                              href={overlayImage}
+                              x={overlayState.position.x}
+                              y={overlayState.position.y}
+                              width={(imageSize.width * overlayState.size) / 100}
+                              height={(imageSize.height * overlayState.size) / 100}
+                              style={{
+                                  transform: `rotate(${overlayState.rotation}deg)`,
+                                  transformOrigin: 'center center',
+                              }}
+                           />
+                        </pattern>
+                      )}
                     </defs>
-
-                    {overlayImage && imageSize && (
-                        <image
-                            href={overlayImage}
-                            clipPath={`url(#${clipPathId})`}
-                            x={overlayState.position.x}
-                            y={overlayState.position.y}
-                            width={(imageSize.width * overlayState.size) / 100}
-                            height={(imageSize.height * overlayState.size) / 100}
-                            className={cn(
-                              'cursor-grab',
-                              isDragging && 'cursor-grabbing'
-                            )}
-                            style={{
-                                transform: `rotate(${overlayState.rotation}deg)`,
-                                transformOrigin: 'center center',
-                            }}
-                            onMouseDown={handleMouseDown}
-                            draggable="false"
-                        />
-                    )}
-                    <path d={pathData} strokeOpacity={overlayImage ? 1 : 0.5} />
+                    <path 
+                      d={pathData} 
+                      fillRule="evenodd"
+                      fill={overlayImage ? `url(#${patternId})` : 'none'}
+                      stroke={overlayImage ? 'none' : 'currentColor'}
+                      strokeOpacity={overlayImage ? 1 : 0.5} 
+                    />
                  </svg>
               ) : (
                 <PltPlaceholder />
