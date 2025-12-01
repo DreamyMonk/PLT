@@ -6,6 +6,7 @@ import { Header } from "@/components/header";
 import { ControlPanel } from "@/components/control-panel";
 import { PltViewer } from "@/components/plt-viewer";
 import { useToast } from "@/hooks/use-toast";
+import { suggestOverlay } from "@/ai/flows/suggest-overlay-flow";
 
 type OverlayState = {
   position: { x: number; y: number };
@@ -36,9 +37,11 @@ function PLTOverlayPage() {
   const searchParams = useSearchParams();
 
   const [pltFile, setPltFile] = useState<File | null>(null);
+  const [overlayImageFile, setOverlayImageFile] = useState<File | null>(null);
   const [overlayImage, setOverlayImage] = useState<string | null>(null);
   const [overlayState, setOverlayState] = useState<OverlayState>(INITIAL_OVERLAY_STATE);
   const [viewState, setViewState] = useState<ViewState>(INITIAL_VIEW_STATE);
+  const [isSuggesting, setIsSuggesting] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(searchParams.toString());
@@ -70,6 +73,7 @@ function PLTOverlayPage() {
   };
 
   const handleImageUpload = (file: File) => {
+    setOverlayImageFile(file);
     setOverlayImage(URL.createObjectURL(file));
   };
   
@@ -90,18 +94,52 @@ function PLTOverlayPage() {
     });
   };
 
-  const handleIntelligentAdjust = () => {
-    // Mock AI suggestion
-    const suggestedState = {
-      position: { x: 120, y: 80 },
-      rotation: -15,
-      size: 80,
-    };
-    setOverlayState(prev => ({ ...prev, ...suggestedState }));
-    toast({
-      title: "Intelligent Adjustment Applied",
-      description: "A suggested position for the overlay has been applied.",
+  const fileToDataUri = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
     });
+  };
+
+  const handleIntelligentAdjust = async () => {
+    if (!pltFile || !overlayImageFile) {
+      toast({
+        variant: 'destructive',
+        title: 'Missing files',
+        description: 'Please upload both a PLT file and an overlay image.',
+      });
+      return;
+    }
+    
+    setIsSuggesting(true);
+    try {
+      const [pltFileContent, overlayImageDataUri] = await Promise.all([
+        pltFile.text(),
+        fileToDataUri(overlayImageFile),
+      ]);
+
+      const suggestion = await suggestOverlay({
+        pltFileContent,
+        overlayImageDataUri,
+      });
+
+      setOverlayState(prev => ({ ...prev, ...suggestion }));
+      toast({
+        title: 'Intelligent Adjustment Applied',
+        description: 'The overlay has been adjusted based on AI suggestion.',
+      });
+    } catch (error) {
+      console.error('Error during intelligent adjustment:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Suggestion Failed',
+        description: 'Could not get an intelligent suggestion. Please try again.',
+      });
+    } finally {
+      setIsSuggesting(false);
+    }
   };
 
   const handleShare = useCallback(() => {
@@ -140,6 +178,7 @@ function PLTOverlayPage() {
           overlayImage={overlayImage}
           overlayState={overlayState}
           viewState={viewState}
+          isSuggesting={isSuggesting}
           onOverlayStateChange={updateOverlayState}
           onViewStateChange={updateViewState}
           onPltUpload={handlePltUpload}

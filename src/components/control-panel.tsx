@@ -1,7 +1,7 @@
 "use client";
 
 import type { FC } from 'react';
-import { UploadCloud, Image as ImageIcon, SlidersHorizontal, Wand2, RotateCcw, Share2, FileText, ZoomIn, ZoomOut } from 'lucide-react';
+import { UploadCloud, Image as ImageIcon, SlidersHorizontal, Wand2, RotateCcw, Share2, FileText, ZoomIn, ZoomOut, Loader2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Label } from './ui/label';
@@ -25,6 +25,7 @@ interface ControlPanelProps {
   overlayImage: string | null;
   overlayState: OverlayState;
   viewState: ViewState;
+  isSuggesting: boolean;
   onOverlayStateChange: (newState: Partial<OverlayState>) => void;
   onViewStateChange: (newState: Partial<ViewState>) => void;
   onPltUpload: (file: File) => void;
@@ -49,6 +50,7 @@ export const ControlPanel: FC<ControlPanelProps> = ({
   overlayImage,
   overlayState,
   viewState,
+  isSuggesting,
   onOverlayStateChange,
   onViewStateChange,
   onPltUpload,
@@ -191,9 +193,9 @@ export const ControlPanel: FC<ControlPanelProps> = ({
       
       <Card>
         <CardContent className="p-4 grid grid-cols-2 gap-2">
-            <Button variant="secondary" onClick={onIntelligentAdjust} disabled={!overlayImage}>
-              <Wand2 />
-              Suggest
+            <Button variant="secondary" onClick={onIntelligentAdjust} disabled={!overlayImage || isSuggesting}>
+              {isSuggesting ? <Loader2 className="animate-spin" /> : <Wand2 />}
+              {isSuggesting ? 'Suggesting...' : 'Suggest'}
             </Button>
             <Button variant="secondary" onClick={onReset}>
               <RotateCcw />
