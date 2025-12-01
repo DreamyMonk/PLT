@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import type { FC } from 'react';
 import { PltPlaceholder } from './plt-placeholder';
 import { Card, CardContent } from './ui/card';
@@ -31,6 +31,19 @@ export const PltViewer: FC<PltViewerProps> = ({
   const imageRef = useRef<HTMLImageElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const dragStartPos = useRef({ x: 0, y: 0 });
+  const [pltContent, setPltContent] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (pltFile) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setPltContent(e.target?.result as string);
+      };
+      reader.readAsText(pltFile);
+    } else {
+      setPltContent(null);
+    }
+  }, [pltFile]);
 
   const handleMouseDown = (e: React.MouseEvent<HTMLImageElement>) => {
     if (!viewerRef.current) return;
@@ -74,7 +87,13 @@ export const PltViewer: FC<PltViewerProps> = ({
           </div>
         )}
         <div className="absolute inset-0 z-10 pointer-events-none">
-          <PltPlaceholder />
+          {pltContent ? (
+            <svg width="100%" height="100%" viewBox="0 0 800 600">
+              <g dangerouslySetInnerHTML={{ __html: pltContent }} />
+            </svg>
+          ) : (
+            <PltPlaceholder />
+          )}
         </div>
         {overlayImage && (
           <img
