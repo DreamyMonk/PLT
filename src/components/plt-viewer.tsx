@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useMemo } from 'react';
 import type { FC } from 'react';
 import { PltPlaceholder } from './plt-placeholder';
 import { Card, CardContent } from './ui/card';
@@ -45,6 +45,58 @@ export const PltViewer: FC<PltViewerProps> = ({
     }
   }, [pltFile]);
 
+  const pltSvg = useMemo(() => {
+    if (!pltContent) return null;
+    // This is a simplified PLT to SVG conversion, focusing on PU, PD, and PA commands.
+    const lines = pltContent.split(';').filter(cmd => cmd.trim());
+    let pathData = '';
+    let isPenDown = false;
+    
+    lines.forEach(line => {
+      const command = line.substring(0, 2);
+      const args = line.substring(2).split(',').map(s => s.trim()).filter(Boolean);
+
+      if ((command === 'PU' || command === 'PD') && args.length >= 2) {
+        const x = args[0];
+        const y = args[1];
+        if (command === 'PU') {
+          isPenDown = false;
+          pathData += ` M ${x} ${y}`;
+        } else { // PD
+          if (isPenDown) {
+            pathData += ` L ${x} ${y}`;
+          } else {
+            pathData += ` M ${x} ${y}`;
+          }
+          isPenDown = true;
+        }
+      } else if (command === 'PA' && args.length >= 2) {
+        const x = args[0];
+        const y = args[1];
+        if (isPenDown) {
+          pathData += ` L ${x} ${y}`;
+        } else {
+          pathData += ` M ${x} ${y}`;
+        }
+      }
+    });
+
+    return (
+      <svg
+        width="100%"
+        height="100%"
+        viewBox="0 0 800 600"
+        preserveAspectRatio="xMidYMid meet"
+        className="stroke-current text-foreground"
+        strokeWidth="1"
+        fill="none"
+      >
+        <path d={pathData} />
+      </svg>
+    );
+  }, [pltContent]);
+
+
   const handleMouseDown = (e: React.MouseEvent<HTMLImageElement>) => {
     if (!viewerRef.current) return;
     setIsDragging(true);
@@ -74,7 +126,7 @@ export const PltViewer: FC<PltViewerProps> = ({
     <Card className="flex-1 w-full h-full overflow-hidden">
       <CardContent
         ref={viewerRef}
-        className="relative w-full h-full p-0 overflow-hidden select-none"
+        className="relative w-full h-full p-0 overflow-hidden select-none bg-muted/10"
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseLeave}
@@ -87,13 +139,7 @@ export const PltViewer: FC<PltViewerProps> = ({
           </div>
         )}
         <div className="absolute inset-0 z-10 pointer-events-none">
-          {pltContent ? (
-            <svg width="100%" height="100%" viewBox="0 0 800 600">
-              <g dangerouslySetInnerHTML={{ __html: pltContent }} />
-            </svg>
-          ) : (
-            <PltPlaceholder />
-          )}
+          {pltSvg ? pltSvg : <PltPlaceholder />}
         </div>
         {overlayImage && (
           <img
