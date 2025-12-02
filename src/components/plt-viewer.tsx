@@ -1,11 +1,10 @@
 "use client";
 
-import { useRef, useState, useEffect, useMemo } from 'react';
-import type { FC } from 'react';
+import { useRef, useState, useEffect, useMemo, FC } from 'react';
 import { PltPlaceholder } from './plt-placeholder';
 import { Card, CardContent } from './ui/card';
 import { cn } from '@/lib/utils';
-import { UploadCloud } from 'lucide-react';
+import { UploadCloud, Move, Maximize } from 'lucide-react';
 
 type OverlayState = {
   position: { x: number; y: number };
@@ -37,10 +36,11 @@ export const PltViewer: FC<PltViewerProps> = ({
   onViewStateChange,
 }) => {
   const viewerRef = useRef<HTMLDivElement>(null);
-  const imageRef = useRef<HTMLImageElement>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const dragStartPos = useRef({ x: 0, y: 0 });
   const [pltContent, setPltContent] = useState<string | null>(null);
+
+  // Interaction states
+  const [interaction, setInteraction] = useState<'pan' | 'drag' | 'resize' | null>(null);
+  const dragStart = useRef({ x: 0, y: 0, overlayX: 0, overlayY: 0, overlaySize: 0 });
 
   useEffect(() => {
     if (pltFile) {
@@ -55,12 +55,12 @@ export const PltViewer: FC<PltViewerProps> = ({
   }, [pltFile]);
 
   const { pathData, viewBox, imageSize } = useMemo(() => {
-    if (!pltContent) return { pathData: null, viewBox: null, imageSize: null };
+    if (!pltContent) return { pathData: null, viewBox: null, imageSize: { width: 0, height: 0 } };
     
     const commands = pltContent.split(';').filter(c => c.trim().length > 0);
     const d: string[] = [];
     let penDown = false;
-
+    
     const coordsToBounds = (coords: {x: number, y: number}[]) => {
       if (coords.length === 0) return { minX: 0, minY: 0, maxX: 1, maxY: 1 };
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -89,7 +89,7 @@ export const PltViewer: FC<PltViewerProps> = ({
     const plotHeight = bounds.maxY - bounds.minY;
 
     if (plotWidth === 0 || plotHeight === 0) {
-        return { pathData: null, viewBox: null, imageSize: null };
+        return { pathData: null, viewBox: null, imageSize: { width: 0, height: 0 } };
     }
     
     const vb = `${bounds.minX} ${bounds.minY} ${plotWidth} ${plotHeight}`;
@@ -100,14 +100,14 @@ export const PltViewer: FC<PltViewerProps> = ({
       const args = (cmd.match(/(-?\d+)/g) || []).map(Number);
 
       switch (op) {
-        case 'PU': // Pen Up
+        case 'PU':
           penDown = false;
           if (args.length >= 2) {
             currentPos = { x: args[0], y: args[1] };
             d.push(`M ${currentPos.x} ${currentPos.y}`);
           }
           break;
-        case 'PD': // Pen Down
+        case 'PD':
           if (!penDown && d.length > 0 && !d[d.length - 1].startsWith('M')) {
             d.push(`M ${currentPos.x} ${currentPos.y}`);
           }
@@ -121,7 +121,7 @@ export const PltViewer: FC<PltViewerProps> = ({
              }
           }
           break;
-        case 'PA': // Plot Absolute
+        case 'PA':
             if (args.length >= 2) {
                 for (let i = 0; i < args.length; i+=2) {
                     if (args.length > i + 1) {
@@ -133,7 +133,7 @@ export const PltViewer: FC<PltViewerProps> = ({
                 }
             }
           break;
-        case 'IN': // Initialize
+        case 'IN':
           d.length = 0;
           break;
       }
@@ -142,42 +142,106 @@ export const PltViewer: FC<PltViewerProps> = ({
     return { pathData: d.join(' '), viewBox: vb, imageSize: { width: plotWidth, height: plotHeight } };
   }, [pltContent]);
 
+  const clipPathId = "plt-clip-path";
+
+  const getSVGPoint = (clientX: number, clientY: number): { x: number; y: number } => {
+    const svg = viewerRef.current?.querySelector('svg');
+    if (!svg) return { x: 0, y: 0 };
+    const pt = svg.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    const ctm = svg.getScreenCTM()?.inverse();
+    if (!ctm) return { x: 0, y: 0 };
+    const svgPoint = pt.matrixTransform(ctm);
+
+    // Now account for the viewer's own pan and zoom
+    const viewerRect = viewerRef.current!.getBoundingClientRect();
+    const svgRect = svg.getBoundingClientRect();
+    const svgX = (viewerRect.width - svgRect.width / viewState.zoom) / 2;
+    const svgY = (viewerRect.height - svgRect.height / viewState.zoom) / 2;
+
+    const finalX = (svgPoint.x - (viewState.pan.x + svgX) ) / viewState.zoom;
+    const finalY = (svgPoint.y - (viewState.pan.y + svgY) ) / viewState.zoom;
+
+    // This is a bit of a hacky transform to align client coords with SVG space
+    // It will need refinement if the SVG aspect ratio is not preserved.
+    const vb = viewBox?.split(' ').map(Number) || [0,0,1,1];
+    const clientWidth = viewerRef.current.clientWidth * 0.8; // because svg width is 80%
+    const clientHeight = viewerRef.current.clientHeight * 0.8;
+    const scaleX = vb[2] / clientWidth;
+    const scaleY = vb[3] / clientHeight;
+
+    const vbX = (finalX * scaleX) + vb[0];
+    const vbY = (finalY * scaleY) + vb[1];
+   
+    return {x: vbX, y: vbY};
+  };
 
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!viewerRef.current || e.target !== e.currentTarget) return;
-    setIsDragging(true);
-    dragStartPos.current = {
-      x: e.clientX - viewState.pan.x,
-      y: e.clientY - viewState.pan.y,
-    };
     e.preventDefault();
+    const target = e.target as SVGElement;
+    
+    if (target.id === 'overlay-drag-handle') {
+      setInteraction('drag');
+    } else if (target.id === 'overlay-resize-handle') {
+      setInteraction('resize');
+    } else if (viewerRef.current && (target === viewerRef.current || target.tagName.toLowerCase() === 'svg' || target.tagName.toLowerCase() === 'path' )) {
+      setInteraction('pan');
+    } else {
+        return;
+    }
+
+    const svgPoint = getSVGPoint(e.clientX, e.clientY);
+    dragStart.current = {
+      x: e.clientX,
+      y: e.clientY,
+      overlayX: overlayState.position.x,
+      overlayY: overlayState.position.y,
+      overlaySize: overlayState.size
+    };
   };
-  
+
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isDragging || !viewerRef.current) return;
-    const newX = e.clientX - dragStartPos.current.x;
-    const newY = e.clientY - dragStartPos.current.y;
-    onViewStateChange({ pan: { x: newX, y: newY } });
+    if (!interaction) return;
+
+    if (interaction === 'pan') {
+        const dx = e.clientX - dragStart.current.x;
+        const dy = e.clientY - dragStart.current.y;
+        onViewStateChange({ pan: { x: dx, y: dy } }); // Simplified pan for now
+    } else if (interaction === 'drag' && imageSize) {
+       const dx = (e.clientX - dragStart.current.x) / viewState.zoom;
+       const dy = (e.clientY - dragStart.current.y) / viewState.zoom;
+        onOverlayStateChange({
+          position: {
+            x: dragStart.current.overlayX + dx,
+            y: dragStart.current.overlayY + dy,
+          }
+        });
+    } else if (interaction === 'resize' && imageSize) {
+        const dx = (e.clientX - dragStart.current.x) / viewState.zoom;
+        const newSize = Math.max(10, dragStart.current.overlaySize + dx); // dx is a proxy for size change
+        onOverlayStateChange({ size: newSize });
+    }
   };
 
   const handleMouseUp = () => {
-    setIsDragging(false);
+    setInteraction(null);
   };
   
   const handleMouseLeave = () => {
-    setIsDragging(false);
+    setInteraction(null);
   };
 
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (interaction) return;
     e.preventDefault();
-    if (isDragging) return;
-
     const zoomFactor = 1 - e.deltaY * 0.001;
     const newZoom = viewState.zoom * zoomFactor;
     onViewStateChange({ zoom: Math.max(0.1, Math.min(newZoom, 5)) });
   };
-
-  const patternId = "overlay-pattern";
+  
+  const imageWidth = useMemo(() => imageSize.width * (overlayState.size / 100), [imageSize.width, overlayState.size]);
+  const imageHeight = useMemo(() => imageSize.height * (overlayState.size / 100), [imageSize.height, overlayState.size]);
 
   return (
     <Card className="flex-1 w-full h-full overflow-hidden">
@@ -185,7 +249,7 @@ export const PltViewer: FC<PltViewerProps> = ({
         ref={viewerRef}
         className={cn(
           "relative w-full h-full p-0 overflow-hidden select-none bg-muted/10",
-          isDragging && 'cursor-grabbing'
+          interaction && (interaction === 'pan' ? 'cursor-grabbing' : 'cursor-grabbing'),
         )}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -208,7 +272,7 @@ export const PltViewer: FC<PltViewerProps> = ({
               </div>
             )}
             <div id="plt-svg-container" className="absolute inset-0 z-10 flex items-center justify-center">
-              {pathData && viewBox && imageSize ? (
+              {pathData && viewBox && imageSize.width > 0 ? (
                  <svg
                     width="80%"
                     height="80%"
@@ -218,27 +282,60 @@ export const PltViewer: FC<PltViewerProps> = ({
                     xmlns="http://www.w3.org/2000/svg"
                  >
                     <defs>
-                      {overlayImage && (
-                        <pattern id={patternId} patternUnits="userSpaceOnUse" width="100%" height="100%">
-                          <g transform={`translate(${overlayState.position.x}, ${overlayState.position.y}) rotate(${overlayState.rotation})`}>
-                           <image
-                              href={overlayImage}
-                              width={overlayState.size + '%'}
-                              height={overlayState.size + '%'}
-                              opacity={overlayState.opacity}
-                           />
-                          </g>
-                        </pattern>
-                      )}
+                      <clipPath id={clipPathId}>
+                        <path d={pathData} fillRule="evenodd" />
+                      </clipPath>
                     </defs>
+                    
+                    {overlayImage && (
+                        <g clipPath={`url(#${clipPathId})`}>
+                          <image
+                            href={overlayImage}
+                            x={overlayState.position.x}
+                            y={overlayState.position.y}
+                            width={imageWidth}
+                            height={imageHeight}
+                            opacity={overlayState.opacity}
+                            transform={`rotate(${overlayState.rotation} ${overlayState.position.x + imageWidth / 2} ${overlayState.position.y + imageHeight / 2})`}
+                            className={interaction === 'drag' || interaction === 'resize' ? 'cursor-grabbing' : 'cursor-grab'}
+                          />
+                        </g>
+                    )}
+                    
                     <path 
                       d={pathData} 
-                      fillRule="evenodd"
-                      fill={overlayImage ? `url(#${patternId})` : 'none'}
-                      stroke={'white'}
+                      fill="none"
+                      stroke="white"
                       strokeWidth="2"
-                      strokeOpacity={1}
+                      strokeOpacity={overlayImage ? 1 : 0}
                     />
+
+                    {overlayImage && (
+                        <g>
+                           <rect 
+                              id="overlay-drag-handle"
+                              x={overlayState.position.x}
+                              y={overlayState.position.y}
+                              width={imageWidth}
+                              height={imageHeight}
+                              fill="transparent"
+                              className="cursor-move"
+                              transform={`rotate(${overlayState.rotation} ${overlayState.position.x + imageWidth / 2} ${overlayState.position.y + imageHeight / 2})`}
+                           />
+                           <rect 
+                              id="overlay-resize-handle"
+                              x={overlayState.position.x + imageWidth - 10}
+                              y={overlayState.position.y + imageHeight - 10}
+                              width="20"
+                              height="20"
+                              fill="hsl(var(--primary))"
+                              stroke="white"
+                              strokeWidth="2"
+                              className="cursor-nwse-resize"
+                               transform={`rotate(${overlayState.rotation} ${overlayState.position.x + imageWidth / 2} ${overlayState.position.y + imageHeight / 2})`}
+                           />
+                        </g>
+                    )}
                  </svg>
               ) : (
                 <PltPlaceholder />
