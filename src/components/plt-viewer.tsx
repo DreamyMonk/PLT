@@ -225,6 +225,13 @@ export const PltViewer: FC<PltViewerProps> = ({
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
       >
+        {!pltFile && !overlayImage && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-center text-muted-foreground z-0 p-8">
+            <UploadCloud className="h-16 w-16" />
+            <h2 className="text-xl font-medium">Start by uploading your files</h2>
+            <p>Upload a PLT file and an image to begin overlaying.</p>
+          </div>
+        )}
         <div
             className="transition-transform duration-200"
             style={{
@@ -232,13 +239,6 @@ export const PltViewer: FC<PltViewerProps> = ({
               transformOrigin: 'center center',
             }}
           >
-            {!pltFile && !overlayImage && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-center text-muted-foreground z-0 p-8">
-                <UploadCloud className="h-16 w-16" />
-                <h2 className="text-xl font-medium">Start by uploading your files</h2>
-                <p>Upload a PLT file and an image to begin overlaying.</p>
-              </div>
-            )}
             <div id="plt-svg-container" className="z-10">
               {pathData && viewBox && imageSize.width > 0 ? (
                  <svg
