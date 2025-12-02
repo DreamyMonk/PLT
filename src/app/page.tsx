@@ -29,7 +29,7 @@ const INITIAL_OVERLAY_STATE: OverlayState = {
 };
 
 const INITIAL_VIEW_STATE: ViewState = {
-  zoom: 1,
+  zoom: 0.1,
   pan: { x: 0, y: 0 },
 };
 
