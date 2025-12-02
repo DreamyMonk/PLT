@@ -1,7 +1,7 @@
 "use client";
 
 import type { FC } from 'react';
-import { UploadCloud, Image as ImageIcon, SlidersHorizontal, Download, FileText, ZoomIn, ZoomOut } from 'lucide-react';
+import { UploadCloud, Image as ImageIcon, SlidersHorizontal, Download, FileText, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Label } from './ui/label';
@@ -190,10 +190,14 @@ export const ControlPanel: FC<ControlPanelProps> = ({
       </Card>
       
       <Card>
-        <CardContent className="p-4">
+        <CardContent className="p-4 grid grid-cols-2 gap-4">
             <Button onClick={onDownload} className="w-full">
               <Download />
-              Download SVG
+              Download PNG
+            </Button>
+            <Button onClick={onReset} variant="outline" className="w-full">
+                <RotateCcw />
+                Reset
             </Button>
         </CardContent>
       </Card>

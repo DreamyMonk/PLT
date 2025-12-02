@@ -116,22 +116,48 @@ function PLTOverlayPage() {
 
     const serializer = new XMLSerializer();
     let source = serializer.serializeToString(svgElement);
-
-    // Add XML declaration and doctype
     source = '<?xml version="1.0" standalone="no"?>\r\n' + source;
 
-    const url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(source);
-    const downloadLink = document.createElement("a");
-    downloadLink.href = url;
-    downloadLink.download = "design.svg";
-    document.body.appendChild(downloadLink);
-    downloadLink.click();
-    document.body.removeChild(downloadLink);
+    const svgBlob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
+    const svgUrl = URL.createObjectURL(svgBlob);
+    
+    const image = new Image();
+    image.onload = () => {
+        const canvas = document.createElement('canvas');
+        const bbox = svgElement.getBBox();
+        canvas.width = bbox.width;
+        canvas.height = bbox.height;
+        
+        const context = canvas.getContext('2d');
+        if (context) {
+            context.drawImage(image, 0, 0, canvas.width, canvas.height);
+            const pngUrl = canvas.toDataURL('image/png');
+            
+            const downloadLink = document.createElement("a");
+            downloadLink.href = pngUrl;
+            downloadLink.download = "design.png";
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
 
-    toast({
-      title: "Download Started",
-      description: "Your SVG file is being downloaded.",
-    });
+            URL.revokeObjectURL(svgUrl);
+            toast({
+              title: "Download Started",
+              description: "Your PNG file is being downloaded.",
+            });
+        }
+    };
+
+    image.onerror = () => {
+      URL.revokeObjectURL(svgUrl);
+       toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Could not convert SVG to PNG.',
+      });
+    }
+
+    image.src = svgUrl;
   }, [toast]);
 
   return (
