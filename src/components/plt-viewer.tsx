@@ -243,7 +243,7 @@ export const PltViewer: FC<PltViewerProps> = ({
                       d={pathData} 
                       fillRule="evenodd"
                       fill={overlayImage ? `url(#${patternId})` : 'none'}
-                      stroke={overlayImage ? 'none' : 'currentColor'}
+                      stroke={'currentColor'}
                       strokeOpacity={overlayImage ? 1 : 0.5} 
                     />
                  </svg>
