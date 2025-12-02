@@ -94,6 +94,7 @@ export const PltViewer: FC<PltViewerProps> = ({
     
     const vb = `${bounds.minX} ${bounds.minY} ${plotWidth} ${plotHeight}`;
 
+    let currentPos = { x: 0, y: 0 };
     for (const cmd of commands) {
       const op = cmd.substring(0, 2).toUpperCase();
       const args = (cmd.match(/(-?\d+)/g) || []).map(Number);
@@ -102,20 +103,20 @@ export const PltViewer: FC<PltViewerProps> = ({
         case 'PU': // Pen Up
           penDown = false;
           if (args.length >= 2) {
-            d.push(`M ${args[0]} ${args[1]}`);
+            currentPos = { x: args[0], y: args[1] };
+            d.push(`M ${currentPos.x} ${currentPos.y}`);
           }
           break;
         case 'PD': // Pen Down
+          if (!penDown && d.length > 0 && !d[d.length - 1].startsWith('M')) {
+            d.push(`M ${currentPos.x} ${currentPos.y}`);
+          }
           penDown = true;
            if (args.length >= 2) {
              for (let i = 0; i < args.length; i+=2) {
                 if (args.length > i + 1) {
-                  // If first command after Pen Up is Pen Down, treat as Move then Line
-                  if (d.length > 0 && d[d.length - 1].startsWith('M')) {
-                    d.push(`L ${args[i]} ${args[i+1]}`);
-                  } else {
-                    d.push(`L ${args[i]} ${args[i+1]}`);
-                  }
+                  currentPos = { x: args[i], y: args[i + 1] };
+                  d.push(`L ${currentPos.x} ${currentPos.y}`);
                 }
              }
           }
@@ -124,8 +125,9 @@ export const PltViewer: FC<PltViewerProps> = ({
             if (args.length >= 2) {
                 for (let i = 0; i < args.length; i+=2) {
                     if (args.length > i + 1) {
+                        currentPos = { x: args[i], y: args[i+1] };
                         const op = penDown ? 'L' : 'M';
-                        d.push(`${op} ${args[i]} ${args[i+1]}`);
+                        d.push(`${op} ${currentPos.x} ${currentPos.y}`);
                         penDown = true;
                     }
                 }
@@ -137,25 +139,25 @@ export const PltViewer: FC<PltViewerProps> = ({
       }
     }
     
-    return { pathData: d.join(' ') + ' Z', viewBox: vb, imageSize: { width: plotWidth, height: plotHeight } };
+    return { pathData: d.join(' '), viewBox: vb, imageSize: { width: plotWidth, height: plotHeight } };
   }, [pltContent]);
 
 
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!viewerRef.current) return;
+    if (!viewerRef.current || e.target !== e.currentTarget) return;
     setIsDragging(true);
     dragStartPos.current = {
-      x: e.clientX / viewState.zoom - overlayState.position.x,
-      y: e.clientY / viewState.zoom - overlayState.position.y,
+      x: e.clientX - viewState.pan.x,
+      y: e.clientY - viewState.pan.y,
     };
     e.preventDefault();
   };
   
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isDragging || !viewerRef.current) return;
-    const newX = e.clientX / viewState.zoom - dragStartPos.current.x;
-    const newY = e.clientY / viewState.zoom - dragStartPos.current.y;
-    onOverlayStateChange({ position: { x: newX, y: newY } });
+    const newX = e.clientX - dragStartPos.current.x;
+    const newY = e.clientY - dragStartPos.current.y;
+    onViewStateChange({ pan: { x: newX, y: newY } });
   };
 
   const handleMouseUp = () => {
@@ -170,16 +172,9 @@ export const PltViewer: FC<PltViewerProps> = ({
     e.preventDefault();
     if (isDragging) return;
 
-    if (e.ctrlKey) { // Pan with Ctrl + Wheel
-      onViewStateChange({ pan: {
-        x: viewState.pan.x - e.deltaX,
-        y: viewState.pan.y - e.deltaY,
-      }});
-    } else { // Zoom with Wheel
-      const zoomFactor = 1 - e.deltaY * 0.001;
-      const newZoom = viewState.zoom * zoomFactor;
-      onViewStateChange({ zoom: Math.max(0.1, Math.min(newZoom, 5)) });
-    }
+    const zoomFactor = 1 - e.deltaY * 0.001;
+    const newZoom = viewState.zoom * zoomFactor;
+    onViewStateChange({ zoom: Math.max(0.1, Math.min(newZoom, 5)) });
   };
 
   const patternId = "overlay-pattern";
@@ -201,7 +196,7 @@ export const PltViewer: FC<PltViewerProps> = ({
         <div
             className="absolute inset-0 transition-transform duration-200"
             style={{
-              transform: `scale(${viewState.zoom}) translate(${viewState.pan.x}px, ${viewState.pan.y}px)`,
+              transform: `translate(${viewState.pan.x}px, ${viewState.pan.y}px) scale(${viewState.zoom})`,
               transformOrigin: 'center center',
             }}
           >
@@ -212,30 +207,27 @@ export const PltViewer: FC<PltViewerProps> = ({
                 <p>Upload a PLT file and an image to begin overlaying.</p>
               </div>
             )}
-            <div className="absolute inset-0 z-10 flex items-center justify-center">
+            <div id="plt-svg-container" className="absolute inset-0 z-10 flex items-center justify-center">
               {pathData && viewBox && imageSize ? (
                  <svg
                     width="80%"
                     height="80%"
                     viewBox={viewBox}
                     preserveAspectRatio="xMidYMid meet"
-                    className="stroke-current text-foreground drop-shadow-2xl"
-                    strokeWidth="2"
+                    className="drop-shadow-2xl"
+                    xmlns="http://www.w3.org/2000/svg"
                  >
                     <defs>
                       {overlayImage && (
-                        <pattern id={patternId} patternUnits="userSpaceOnUse" width={imageSize.width} height={imageSize.height}>
+                        <pattern id={patternId} patternUnits="userSpaceOnUse" width="100%" height="100%">
+                          <g transform={`translate(${overlayState.position.x}, ${overlayState.position.y}) rotate(${overlayState.rotation})`}>
                            <image
                               href={overlayImage}
-                              x={overlayState.position.x}
-                              y={overlayState.position.y}
-                              width={(imageSize.width * overlayState.size) / 100}
-                              height={(imageSize.height * overlayState.size) / 100}
-                              style={{
-                                  transform: `rotate(${overlayState.rotation}deg)`,
-                                  transformOrigin: 'center center',
-                              }}
+                              width={overlayState.size + '%'}
+                              height={overlayState.size + '%'}
+                              opacity={overlayState.opacity}
                            />
+                          </g>
                         </pattern>
                       )}
                     </defs>
@@ -243,8 +235,9 @@ export const PltViewer: FC<PltViewerProps> = ({
                       d={pathData} 
                       fillRule="evenodd"
                       fill={overlayImage ? `url(#${patternId})` : 'none'}
-                      stroke={'currentColor'}
-                      strokeOpacity={overlayImage ? 1 : 0.5} 
+                      stroke={'white'}
+                      strokeWidth="2"
+                      strokeOpacity={1}
                     />
                  </svg>
               ) : (

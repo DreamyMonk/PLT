@@ -103,63 +103,36 @@ function PLTOverlayPage() {
     });
   };
 
-  const handleIntelligentAdjust = async () => {
-    if (!pltFile || !overlayImageFile) {
+  const handleDownload = useCallback(() => {
+    const svgElement = document.getElementById('plt-svg-container')?.querySelector('svg');
+    if (!svgElement) {
       toast({
         variant: 'destructive',
-        title: 'Missing files',
-        description: 'Please upload both a PLT file and an overlay image.',
+        title: 'Error',
+        description: 'Could not find the SVG to download.',
       });
       return;
     }
-    
-    setIsSuggesting(true);
-    try {
-      const [pltFileContent, overlayImageDataUri] = await Promise.all([
-        pltFile.text(),
-        fileToDataUri(overlayImageFile),
-      ]);
 
-      const suggestion = await suggestOverlay({
-        pltFileContent,
-        overlayImageDataUri,
-      });
+    const serializer = new XMLSerializer();
+    let source = serializer.serializeToString(svgElement);
 
-      setOverlayState(prev => ({ ...prev, ...suggestion, position: { x: suggestion.position.x, y: suggestion.position.y} }));
-      toast({
-        title: 'Intelligent Adjustment Applied',
-        description: 'The overlay has been adjusted based on AI suggestion.',
-      });
-    } catch (error) {
-      console.error('Error during intelligent adjustment:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Suggestion Failed',
-        description: 'Could not get an intelligent suggestion. Please try again.',
-      });
-    } finally {
-      setIsSuggesting(false);
-    }
-  };
+    // Add XML declaration and doctype
+    source = '<?xml version="1.0" standalone="no"?>\r\n' + source;
 
-  const handleShare = useCallback(() => {
-    const params = new URLSearchParams();
-    params.set("x", overlayState.position.x.toFixed(2));
-    params.set("y", overlayState.position.y.toFixed(2));
-    params.set("size", overlayState.size.toString());
-    params.set("rotation", overlayState.rotation.toString());
-    params.set("opacity", overlayState.opacity.toString());
+    const url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(source);
+    const downloadLink = document.createElement("a");
+    downloadLink.href = url;
+    downloadLink.download = "design.svg";
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    document.body.removeChild(downloadLink);
 
-    const newUrl = `${window.location.pathname}?${params.toString()}`;
-    window.history.pushState({}, "", newUrl);
-
-    navigator.clipboard.writeText(window.location.href).then(() => {
-      toast({
-        title: "Link Copied!",
-        description: "Shareable link has been copied to your clipboard.",
-      });
+    toast({
+      title: "Download Started",
+      description: "Your SVG file is being downloaded.",
     });
-  }, [overlayState, toast]);
+  }, [toast]);
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
@@ -184,8 +157,7 @@ function PLTOverlayPage() {
           onPltUpload={handlePltUpload}
           onImageUpload={handleImageUpload}
           onReset={handleReset}
-          onIntelligentAdjust={handleIntelligentAdjust}
-          onShare={handleShare}
+          onDownload={handleDownload}
         />
       </main>
     </div>
