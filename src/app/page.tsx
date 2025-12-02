@@ -71,6 +71,8 @@ function PLTOverlayPage() {
 
   const handlePltUpload = (file: File) => {
     setPltFile(file);
+    setViewState(INITIAL_VIEW_STATE);
+    setOverlayState(INITIAL_OVERLAY_STATE);
   };
 
   const handleImageUpload = (file: File) => {
