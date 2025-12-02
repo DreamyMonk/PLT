@@ -54,8 +54,8 @@ export const PltViewer: FC<PltViewerProps> = ({
     }
   }, [pltFile]);
 
-  const { pathData, viewBox, imageSize } = useMemo(() => {
-    if (!pltContent) return { pathData: null, viewBox: null, imageSize: { width: 0, height: 0 } };
+  const { pathData, viewBox, imageSize, mainPath, cutoutPaths } = useMemo(() => {
+    if (!pltContent) return { pathData: null, viewBox: null, imageSize: { width: 0, height: 0 }, mainPath: null, cutoutPaths: [] };
     
     const commands = pltContent.split(';').filter(c => c.trim().length > 0);
     const d: string[] = [];
@@ -89,7 +89,7 @@ export const PltViewer: FC<PltViewerProps> = ({
     const plotHeight = bounds.maxY - bounds.minY;
 
     if (plotWidth === 0 || plotHeight === 0) {
-        return { pathData: null, viewBox: null, imageSize: { width: 0, height: 0 } };
+        return { pathData: null, viewBox: null, imageSize: { width: 0, height: 0 }, mainPath: null, cutoutPaths: [] };
     }
     
     const vb = `${bounds.minX} ${bounds.minY} ${plotWidth} ${plotHeight}`;
@@ -139,7 +139,13 @@ export const PltViewer: FC<PltViewerProps> = ({
       }
     }
     
-    return { pathData: d.join(' '), viewBox: vb, imageSize: { width: plotWidth, height: plotHeight } };
+    const fullPathData = d.join(' ');
+    const paths = fullPathData.split('M').filter(p => p.trim() !== '').map(p => 'M' + p.trim());
+    const mainPathData = paths[0] || '';
+    const cutoutPathsData = paths.slice(1);
+
+
+    return { pathData: fullPathData, viewBox: vb, imageSize: { width: plotWidth, height: plotHeight }, mainPath: mainPathData, cutoutPaths: cutoutPathsData };
   }, [pltContent]);
 
   const clipPathId = "plt-clip-path";
@@ -217,7 +223,6 @@ export const PltViewer: FC<PltViewerProps> = ({
         ref={viewerRef}
         className={cn(
           "relative w-full h-full p-0 flex items-center justify-center overflow-hidden select-none bg-muted/10",
-          interaction && (interaction === 'pan' ? 'cursor-grabbing' : 'cursor-grabbing'),
         )}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -233,7 +238,7 @@ export const PltViewer: FC<PltViewerProps> = ({
           </div>
         )}
         <div
-            className="transition-transform duration-200"
+            className={cn("transition-transform duration-200", interaction && (interaction === 'pan' ? 'cursor-grabbing' : 'cursor-default'))}
             style={{
               transform: `translate(${viewState.pan.x}px, ${viewState.pan.y}px) scale(${viewState.zoom})`,
               transformOrigin: 'center center',
@@ -272,13 +277,26 @@ export const PltViewer: FC<PltViewerProps> = ({
                     )}
                     
                     <path 
-                      d={pathData} 
+                      d={mainPath} 
                       fill="none"
                       stroke="white"
                       strokeWidth="2"
-                      strokeOpacity="1"
+                      strokeOpacity="0.8"
                       vectorEffect="non-scaling-stroke"
                     />
+
+                    {cutoutPaths.map((path, index) => (
+                      <path
+                        key={index}
+                        d={path}
+                        fill="none"
+                        stroke="black"
+                        strokeWidth="2"
+                        strokeOpacity="0.8"
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    ))}
+
 
                     {overlayImage && (
                         <g>
