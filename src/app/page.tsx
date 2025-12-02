@@ -7,6 +7,7 @@ import { ControlPanel } from "@/components/control-panel";
 import { PltViewer } from "@/components/plt-viewer";
 import { useToast } from "@/hooks/use-toast";
 import { suggestOverlay } from "@/ai/flows/suggest-overlay-flow";
+import { Separator } from "@/components/ui/separator";
 
 type OverlayState = {
   position: { x: number; y: number };
@@ -163,28 +164,33 @@ function PLTOverlayPage() {
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
       <Header />
-      <main className="flex-1 grid grid-cols-1 md:grid-cols-[1fr_380px] gap-4 p-4 overflow-hidden">
-        <PltViewer
-          pltFile={pltFile}
-          overlayImage={overlayImage}
-          overlayState={overlayState}
-          viewState={viewState}
-          onOverlayStateChange={updateOverlayState}
-          onViewStateChange={updateViewState}
-        />
-        <ControlPanel
-          pltFile={pltFile}
-          overlayImage={overlayImage}
-          overlayState={overlayState}
-          viewState={viewState}
-          isSuggesting={isSuggesting}
-          onOverlayStateChange={updateOverlayState}
-          onViewStateChange={updateViewState}
-          onPltUpload={handlePltUpload}
-          onImageUpload={handleImageUpload}
-          onReset={handleReset}
-          onDownload={handleDownload}
-        />
+      <main className="flex-1 grid grid-cols-1 md:grid-cols-[1fr_auto_380px] overflow-hidden">
+        <div className="p-4 h-full overflow-hidden">
+          <PltViewer
+            pltFile={pltFile}
+            overlayImage={overlayImage}
+            overlayState={overlayState}
+            viewState={viewState}
+            onOverlayStateChange={updateOverlayState}
+            onViewStateChange={updateViewState}
+          />
+        </div>
+        <Separator orientation="vertical" />
+        <div className="p-4 h-full overflow-hidden">
+          <ControlPanel
+            pltFile={pltFile}
+            overlayImage={overlayImage}
+            overlayState={overlayState}
+            viewState={viewState}
+            isSuggesting={isSuggesting}
+            onOverlayStateChange={updateOverlayState}
+            onViewStateChange={updateViewState}
+            onPltUpload={handlePltUpload}
+            onImageUpload={handleImageUpload}
+            onReset={handleReset}
+            onDownload={handleDownload}
+          />
+        </div>
       </main>
     </div>
   );

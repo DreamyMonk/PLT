@@ -105,7 +105,7 @@ export const ControlPanel: FC<ControlPanelProps> = ({
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
-              <ZoomIn className="h-5 w-5" />
+              <SlidersHorizontal className="h-5 w-5" />
               View Controls
           </CardTitle>
         </CardHeader>
@@ -192,11 +192,11 @@ export const ControlPanel: FC<ControlPanelProps> = ({
       <Card>
         <CardContent className="p-4 grid grid-cols-2 gap-4">
             <Button onClick={onDownload} className="w-full">
-              <Download />
+              <Download className="mr-2"/>
               Download PNG
             </Button>
             <Button onClick={onReset} variant="outline" className="w-full">
-                <RotateCcw />
+                <RotateCcw className="mr-2"/>
                 Reset
             </Button>
         </CardContent>
