@@ -4,7 +4,7 @@ import { useRef, useState, useEffect, useMemo, FC } from 'react';
 import { PltPlaceholder } from './plt-placeholder';
 import { Card, CardContent } from './ui/card';
 import { cn } from '@/lib/utils';
-import { UploadCloud, Move, Maximize } from 'lucide-react';
+import { UploadCloud } from 'lucide-react';
 
 type OverlayState = {
   position: { x: number; y: number };
@@ -40,7 +40,7 @@ export const PltViewer: FC<PltViewerProps> = ({
 
   // Interaction states
   const [interaction, setInteraction] = useState<'pan' | 'drag' | 'resize' | null>(null);
-  const dragStart = useRef({ x: 0, y: 0, overlayX: 0, overlayY: 0, overlaySize: 0 });
+  const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0, overlayX: 0, overlayY: 0, overlaySize: 0 });
 
   useEffect(() => {
     if (pltFile) {
@@ -144,39 +144,6 @@ export const PltViewer: FC<PltViewerProps> = ({
 
   const clipPathId = "plt-clip-path";
 
-  const getSVGPoint = (clientX: number, clientY: number): { x: number; y: number } => {
-    const svg = viewerRef.current?.querySelector('svg');
-    if (!svg) return { x: 0, y: 0 };
-    const pt = svg.createSVGPoint();
-    pt.x = clientX;
-    pt.y = clientY;
-    const ctm = svg.getScreenCTM()?.inverse();
-    if (!ctm) return { x: 0, y: 0 };
-    const svgPoint = pt.matrixTransform(ctm);
-
-    // Now account for the viewer's own pan and zoom
-    const viewerRect = viewerRef.current!.getBoundingClientRect();
-    const svgRect = svg.getBoundingClientRect();
-    const svgX = (viewerRect.width - svgRect.width / viewState.zoom) / 2;
-    const svgY = (viewerRect.height - svgRect.height / viewState.zoom) / 2;
-
-    const finalX = (svgPoint.x - (viewState.pan.x + svgX) ) / viewState.zoom;
-    const finalY = (svgPoint.y - (viewState.pan.y + svgY) ) / viewState.zoom;
-
-    // This is a bit of a hacky transform to align client coords with SVG space
-    // It will need refinement if the SVG aspect ratio is not preserved.
-    const vb = viewBox?.split(' ').map(Number) || [0,0,1,1];
-    const clientWidth = viewerRef.current.clientWidth * 0.8; // because svg width is 80%
-    const clientHeight = viewerRef.current.clientHeight * 0.8;
-    const scaleX = vb[2] / clientWidth;
-    const scaleY = vb[3] / clientHeight;
-
-    const vbX = (finalX * scaleX) + vb[0];
-    const vbY = (finalY * scaleY) + vb[1];
-   
-    return {x: vbX, y: vbY};
-  };
-
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
     const target = e.target as SVGElement;
@@ -185,16 +152,17 @@ export const PltViewer: FC<PltViewerProps> = ({
       setInteraction('drag');
     } else if (target.id === 'overlay-resize-handle') {
       setInteraction('resize');
-    } else if (viewerRef.current && (target === viewerRef.current || target.tagName.toLowerCase() === 'svg' || target.tagName.toLowerCase() === 'path' )) {
+    } else if (viewerRef.current && (target === viewerRef.current || target.closest('svg'))) {
       setInteraction('pan');
     } else {
         return;
     }
 
-    const svgPoint = getSVGPoint(e.clientX, e.clientY);
     dragStart.current = {
       x: e.clientX,
       y: e.clientY,
+      panX: viewState.pan.x,
+      panY: viewState.pan.y,
       overlayX: overlayState.position.x,
       overlayY: overlayState.position.y,
       overlaySize: overlayState.size
@@ -207,7 +175,7 @@ export const PltViewer: FC<PltViewerProps> = ({
     if (interaction === 'pan') {
         const dx = e.clientX - dragStart.current.x;
         const dy = e.clientY - dragStart.current.y;
-        onViewStateChange({ pan: { x: dx, y: dy } }); // Simplified pan for now
+        onViewStateChange({ pan: { x: dragStart.current.panX + dx, y: dragStart.current.panY + dy } });
     } else if (interaction === 'drag' && imageSize) {
        const dx = (e.clientX - dragStart.current.x) / viewState.zoom;
        const dy = (e.clientY - dragStart.current.y) / viewState.zoom;
@@ -248,7 +216,7 @@ export const PltViewer: FC<PltViewerProps> = ({
       <CardContent
         ref={viewerRef}
         className={cn(
-          "relative w-full h-full p-0 overflow-hidden select-none bg-muted/10",
+          "relative w-full h-full p-0 flex items-center justify-center overflow-hidden select-none bg-muted/10",
           interaction && (interaction === 'pan' ? 'cursor-grabbing' : 'cursor-grabbing'),
         )}
         onMouseMove={handleMouseMove}
@@ -258,7 +226,7 @@ export const PltViewer: FC<PltViewerProps> = ({
         onMouseDown={handleMouseDown}
       >
         <div
-            className="absolute inset-0 transition-transform duration-200"
+            className="transition-transform duration-200"
             style={{
               transform: `translate(${viewState.pan.x}px, ${viewState.pan.y}px) scale(${viewState.zoom})`,
               transformOrigin: 'center center',
@@ -271,15 +239,16 @@ export const PltViewer: FC<PltViewerProps> = ({
                 <p>Upload a PLT file and an image to begin overlaying.</p>
               </div>
             )}
-            <div id="plt-svg-container" className="absolute inset-0 z-10 flex items-center justify-center">
+            <div id="plt-svg-container" className="z-10">
               {pathData && viewBox && imageSize.width > 0 ? (
                  <svg
-                    width="80%"
-                    height="80%"
+                    width={imageSize.width}
+                    height={imageSize.height}
                     viewBox={viewBox}
                     preserveAspectRatio="xMidYMid meet"
                     className="drop-shadow-2xl"
                     xmlns="http://www.w3.org/2000/svg"
+                    style={{ overflow: 'visible' }}
                  >
                     <defs>
                       <clipPath id={clipPathId}>
@@ -307,7 +276,8 @@ export const PltViewer: FC<PltViewerProps> = ({
                       fill="none"
                       stroke="white"
                       strokeWidth="2"
-                      strokeOpacity={overlayImage ? 1 : 0}
+                      strokeOpacity="1"
+                      vectorEffect="non-scaling-stroke"
                     />
 
                     {overlayImage && (
